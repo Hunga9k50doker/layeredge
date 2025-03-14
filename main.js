@@ -81,9 +81,11 @@ async function run() {
 
         log.info(`Checking Node Points for Wallet: ${address}`);
         await socket.checkNodePoints();
-
-        log.info(`Checking tasks for Wallet: ${address}`);
-        await socket.handleTasks();
+        await socket.handleSubmitProof();
+        if (config.auto_task) {
+          log.info(`Checking tasks for Wallet: ${address}`);
+          await socket.handleTasks();
+        }
       } catch (error) {
         log.error(`Error Processing wallet:`, error.message);
       }

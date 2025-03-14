@@ -54,7 +54,7 @@ class LayerEdgeConnection {
         if (error?.response?.status === 400) {
           log.error(`Invalid param for request ${url}...`);
           return 400;
-        } else if (error.response?.status === 409 && url.startsWith("https://referralapi.layeredge.io/api/task")) {
+        } else if (error.response?.status === 409) {
           return error.response.data;
         } else if (error.response?.status === 429) {
           log.error(chalk.red(`Layer Edge rate limit exceeded...`));
@@ -68,7 +68,7 @@ class LayerEdgeConnection {
           return null;
         }
 
-        process.stdout.write(chalk.yellow(`request failed: ${error.message} => Retrying... (${i + 1}/${retries})\r`));
+        process.stdout.write(chalk.yellow(`Request failed: ${error.message} => Retrying... (${i + 1}/${retries})\r`));
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
@@ -80,7 +80,7 @@ class LayerEdgeConnection {
       invite_code: this.refCode,
     };
 
-    const response = await this.makeRequest("post", "https://referralapi.layeredge.io/api/referral/verify-referral-code", { data: inviteData });
+    const response = await this.makeRequest("post", `${config.baseURL}/referral/verify-referral-code`, { data: inviteData });
 
     if (response && response.data && response.data.data.valid === true) {
       log.info("Invite Code Valid", response.data);
@@ -96,7 +96,7 @@ class LayerEdgeConnection {
       walletAddress: this.wallet.address,
     };
 
-    const response = await this.makeRequest("post", `https://referralapi.layeredge.io/api/referral/register-wallet/${this.refCode}`, { data: registerData });
+    const response = await this.makeRequest("post", `${config.baseURL}/referral/register-wallet/${this.refCode}`, { data: registerData });
 
     if (response && response.data) {
       log.info("Wallet successfully registered", response.data);
@@ -138,7 +138,7 @@ class LayerEdgeConnection {
       timestamp: timestamp,
     };
 
-    const response = await this.makeRequest("post", `https://referralapi.layeredge.io/api/light-node/node-action/${this.wallet.address}/start`, { data: dataSign });
+    const response = await this.makeRequest("post", `${config.baseURL}/light-node/node-action/${this.wallet.address}/start`, { data: dataSign });
 
     if (response && response.data && response.data.message === "node action executed successfully") {
       log.info("Connected Node Successfully", response.data);
@@ -178,7 +178,7 @@ class LayerEdgeConnection {
       twitterId: id,
     };
 
-    const response = await this.makeRequest("post", `https://referralapi.layeredge.io/api/task/connect-twitter`, { data: dataSign });
+    const response = await this.makeRequest("post", `${config.baseURL}/task/connect-twitter`, { data: dataSign });
 
     if (response && response.data && response.data.message.includes("verified")) {
       log.info("Connected twitter Successfully", response.data);
@@ -190,13 +190,16 @@ class LayerEdgeConnection {
   }
 
   async getProofStatus(task) {
-    const response = await this.makeRequest("get", `https://staging-referralapi.layeredge.io/api/card/proof-status/${this.wallet.address}`);
+    const response = await this.makeRequest("get", `${config.baseURL}/card/proof-status/${this.wallet.address}`);
     if (response && response.data) {
       const submited = response.data.data.hasSubmitted;
       const isCardGenerated = response.data.data.isCardGenerated;
       if (submited === false) {
-        return await this.submitProof(task);
-      } else if (isCardGenerated === false) {
+        return await this.submitProof();
+      }
+      if (!task) return false;
+
+      if (isCardGenerated === false) {
         const res = await this.generateCard();
         if (res) return await this.doTask(task);
         return false;
@@ -210,20 +213,20 @@ class LayerEdgeConnection {
   }
 
   async submitProof() {
-    const timestamp = new Date();
+    const timestamp = new Date().toISOString();
     const message = `I am submitting a proof for LayerEdge at ${timestamp}`;
     const sign = await this.wallet.signMessage(message);
+
     const dataSign = {
       message: message,
       signature: sign,
-      address: this.wallet.address,
+      walletAddress: this.wallet.address,
       proof: `Hi, my wallet address ${this.wallet.address}. I'm verified submit proof`,
     };
-    const response = await this.makeRequest("post", `https://referralapi.layeredge.io/api/card/submit-proof`, { data: dataSign });
+
+    const response = await this.makeRequest("post", `${config.baseURL}/card/submit-proof`, { data: dataSign });
     if (response && response.data) {
       log.info("Submit Proof Success: ", response.data);
-      // await this.generateCard();
-      // return await this.doTask();
       return false;
     } else {
       log.warn("Failed to submit proof");
@@ -231,7 +234,7 @@ class LayerEdgeConnection {
     }
   }
   async generateCard() {
-    const response = await this.makeRequest("post", `https://staging-referralapi.layeredge.io/api/card/shareable-card`, {
+    const response = await this.makeRequest("post", `${config.baseURL}/card/shareable-card`, {
       data: {
         walletAddress: this.wallet.address,
       },
@@ -245,7 +248,12 @@ class LayerEdgeConnection {
     }
   }
 
+  async handleSubmitProof() {
+    return await this.getProofStatus();
+  }
+
   async handleTasks() {
+    if (!config.auto_task) return false;
     for (const task of this.tasks) {
       await delay(1);
       const tasksCompleted = this.localStorage[this.wallet.address]?.tasks || [];
@@ -269,7 +277,7 @@ class LayerEdgeConnection {
       timestamp: timestamp,
       walletAddress: this.wallet.address,
     };
-    const response = await this.makeRequest("post", `https://referralapi.layeredge.io/api/task/${task.id}`, { data: dataSign });
+    const response = await this.makeRequest("post", `${config.baseURL}/task/${task.id}`, { data: dataSign });
     if (response && response.data && response.data.message?.includes("successfully")) {
       log.info(`Completed Task ${task.title} Successfully`, response.data);
       await saveJson(this.localStorage, this.wallet.address, task.id, "localStorage.json");
@@ -333,7 +341,7 @@ class LayerEdgeConnection {
       timestamp: timestamp,
     };
 
-    const response = await this.makeRequest("post", `https://referralapi.layeredge.io/api/light-node/node-action/${this.wallet.address}/stop`, { data: dataSign });
+    const response = await this.makeRequest("post", `${config.baseURL}/light-node/node-action/${this.wallet.address}/stop`, { data: dataSign });
 
     if (response && response.data) {
       log.info("Stop and Claim Points Result:", response.data);
@@ -345,7 +353,7 @@ class LayerEdgeConnection {
   }
 
   async checkNodeStatus() {
-    const response = await this.makeRequest("get", `https://referralapi.layeredge.io/api/light-node/node-status/${this.wallet.address}`);
+    const response = await this.makeRequest("get", `${config.baseURL}/light-node/node-status/${this.wallet.address}`);
 
     if (response === 404) {
       log.info("Node not found in this wallet, trying to regitering wallet...");
@@ -373,7 +381,7 @@ class LayerEdgeConnection {
   }
 
   async checkNodePoints() {
-    const response = await this.makeRequest("get", `https://referralapi.layeredge.io/api/referral/wallet-details/${this.wallet.address}`);
+    const response = await this.makeRequest("get", `${config.baseURL}/referral/wallet-details/${this.wallet.address}`);
     if (response && response.data) {
       const isTwitterVerified = response.data.data.isTwitterVerified;
       log.info(`${this.wallet.address} Total Points:`, response.data.data?.nodePoints || 0);
@@ -403,7 +411,7 @@ class LayerEdgeConnection {
       timestamp: timestamp,
       walletAddress: this.wallet.address,
     };
-    const response = await this.makeRequest("post", `https://referralapi.layeredge.io/api/light-node/claim-node-points`, { data: dataSign });
+    const response = await this.makeRequest("post", `${config.baseURL}/light-node/claim-node-points`, { data: dataSign });
     if (response && response.data) {
       log.info(`${this.wallet.address} Checkin success:`, response.data);
       return true;

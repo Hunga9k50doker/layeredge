@@ -58,10 +58,14 @@ class Client {
       log.info(`[Account ${i}] Checking Node Points for Wallet: ${address}`);
       await socket.checkNodePoints();
 
-      log.info(`[Account ${i}] Checking Tasks for Wallet: ${address}`);
-      const resTask = await socket.handleTasks();
-      if (resTask) {
-        parentPort.postMessage({ message: "saveTask", value: resTask, address: this.wallet.address });
+      await socket.handleSubmitProof();
+
+      if (config.auto_task) {
+        log.info(`[Account ${i}] Checking Tasks for Wallet: ${address}`);
+        const resTask = await socket.handleTasks();
+        if (resTask) {
+          parentPort.postMessage({ message: "saveTask", value: resTask, address: this.wallet.address });
+        }
       }
     } catch (error) {
       log.error(`[Account ${i}] Error Processing wallet:`, error.message);
