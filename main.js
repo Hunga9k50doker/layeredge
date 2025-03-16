@@ -67,10 +67,14 @@ async function run() {
       const { address, privateKey } = wallet;
       try {
         const socket = new LayerEdge(proxy, privateKey, config.ref_code, localStorage, tasks);
-        log.info(`Processing Wallet Address: ${address} with proxy:`, proxy);
+        if (useProxy) {
+          log.info(`Processing Wallet Address: ${address} checking proxy...`);
+          const proxyip = await socket.checkProxy();
+          if (!proxyip) return;
+        }
+
         log.info(`Checking Node Status for: ${address}`);
         const isRunning = await socket.checkNodeStatus();
-
         if (isRunning) {
           log.info(`Wallet ${address} is running - trying to claim node points...`);
           await socket.stopNode();

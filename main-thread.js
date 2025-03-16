@@ -44,24 +44,27 @@ class Client {
     const { address, privateKey } = wallet;
     try {
       const socket = new LayerEdge(proxy, privateKey, config.ref_code, this.localStorage, this.tasks);
-      log.info(`[Account ${i}] Processing Wallet Address: ${address} with proxy:`, proxy);
+      log.info(`[Account ${i}][${address}] Checking proxy...`);
+      const proxyip = await socket.checkProxy();
+      if (!proxyip) return;
+
       log.info(`[Account ${i}] Checking Node Status for: ${address}`);
       const isRunning = await socket.checkNodeStatus();
 
       if (isRunning) {
-        log.info(`[Account ${i}] Wallet ${address} is running - trying to claim node points...`);
+        log.info(`[Account ${i}][${address}] is running - trying to claim node points...`);
         await socket.stopNode();
       }
-      log.info(`[Account ${i}] Trying to reconnect node for Wallet: ${address}`);
+      log.info(`[Account ${i}][${address}] Trying to reconnect node...`);
       await socket.connectNode();
 
-      log.info(`[Account ${i}] Checking Node Points for Wallet: ${address}`);
+      log.info(`[Account ${i}][${address}] Checking Node Points...`);
       await socket.checkNodePoints();
 
       await socket.handleSubmitProof();
 
       if (config.auto_task) {
-        log.info(`[Account ${i}] Checking Tasks for Wallet: ${address}`);
+        log.info(`[Account ${i}][${address}] Checking Tasks...`);
         const resTask = await socket.handleTasks();
         if (resTask) {
           parentPort.postMessage({ message: "saveTask", value: resTask, address: this.wallet.address });

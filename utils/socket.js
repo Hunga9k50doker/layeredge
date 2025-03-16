@@ -2,7 +2,7 @@ import axios from "axios";
 import chalk from "chalk";
 import { ethers, Wallet } from "ethers";
 import log from "./logger.js";
-import { newAgent, readFile, saveJson, readJson, saveToFile } from "./helper.js";
+import { newAgent, saveJson } from "./helper.js";
 import { ABI } from "./ABI.js";
 import { config } from "../config.js";
 import { solveCaptcha } from "./captcha.js";
@@ -11,6 +11,7 @@ const delay = async (s) => await new Promise((resolves) => setTimeout(resolves, 
 class LayerEdgeConnection {
   constructor(proxy = null, privateKey = null, refCode = "cvIwhX0T", localStorage, tasks) {
     this.refCode = refCode;
+    this.proxyIP = null;
     this.proxy = proxy;
     this.privateKey = privateKey;
     this.localStorage = localStorage;
@@ -27,7 +28,7 @@ class LayerEdgeConnection {
     return this.wallet;
   }
 
-  async makeRequest(method, url, config = {}, retries = 20) {
+  async makeRequest(method, url, config = {}, retries = 10) {
     for (let i = 0; i < retries; i++) {
       try {
         const response = await axios({
@@ -67,8 +68,8 @@ class LayerEdgeConnection {
           }
           return null;
         }
-
-        process.stdout.write(chalk.yellow(`Request failed: ${error.message} => Retrying... (${i + 1}/${retries})\r`));
+        const messErr = error.status < 500 ? JSON.stringify(error.response.data || error.message) : error.response;
+        process.stdout.write(chalk.yellow(`Request failed: ${messErr} => Retrying... (${i + 1}/${retries})\r`));
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
@@ -118,7 +119,7 @@ class LayerEdgeConnection {
       log.info("Verify captcha successfully", response.data);
       return true;
     } else {
-      log.error("Failed To Register wallets", "error");
+      log.error(`Failed To Register wallets`, "error");
       return false;
     }
   }
@@ -141,10 +142,10 @@ class LayerEdgeConnection {
     const response = await this.makeRequest("post", `${config.baseURL}/light-node/node-action/${this.wallet.address}/start`, { data: dataSign });
 
     if (response && response.data && response.data.message === "node action executed successfully") {
-      log.info("Connected Node Successfully", response.data);
+      log.info(`[${this.wallet.address}] Connected Node Successfully`, response.data);
       return true;
     } else {
-      log.warn("Failed to connect Node");
+      log.warn(`[${this.wallet.address}] Failed to connect Node`);
       return false;
     }
   }
@@ -181,10 +182,10 @@ class LayerEdgeConnection {
     const response = await this.makeRequest("post", `${config.baseURL}/task/connect-twitter`, { data: dataSign });
 
     if (response && response.data && response.data.message.includes("verified")) {
-      log.info("Connected twitter Successfully", response.data);
+      log.info(`[${this.wallet.address}] Connected twitter Successfully`, response.data);
       return true;
     } else {
-      log.warn("Failed to connect Node", response);
+      log.warn(`[${this.wallet.address}] Failed to connect Node`, response);
       return false;
     }
   }
@@ -226,10 +227,10 @@ class LayerEdgeConnection {
 
     const response = await this.makeRequest("post", `${config.baseURL}/card/submit-proof`, { data: dataSign });
     if (response && response.data) {
-      log.info("Submit Proof Success: ", response.data);
+      log.info(`[${this.wallet.address}] Submit Proof Success: `, response.data);
       return false;
     } else {
-      log.warn("Failed to submit proof");
+      log.warn(`[${this.wallet.address}] Failed to submit proof`);
       return false;
     }
   }
@@ -240,10 +241,10 @@ class LayerEdgeConnection {
       },
     });
     if (response && response.data) {
-      log.info("Generate card success: ", response.data);
+      log.info(`[${this.wallet.address}] Generate card success: `, response.data);
       return true;
     } else {
-      log.error("Failed to generate card");
+      log.error(`[${this.wallet.address}] Failed to generate card`);
       return false;
     }
   }
@@ -283,7 +284,7 @@ class LayerEdgeConnection {
       await saveJson(this.localStorage, this.wallet.address, task.id, "localStorage.json");
       return task.id;
     } else {
-      log.warn(`Failed to Completed Task ${task.title}`, response);
+      log.warn(`[${this.wallet.address}] Failed to Completed Task ${task.title}`, response);
       if (response == 404 && task.id == "nft-verification/1") {
         const resMint = await this.handleMintNFT();
         if (resMint) {
@@ -344,10 +345,10 @@ class LayerEdgeConnection {
     const response = await this.makeRequest("post", `${config.baseURL}/light-node/node-action/${this.wallet.address}/stop`, { data: dataSign });
 
     if (response && response.data) {
-      log.info("Stop and Claim Points Result:", response.data);
+      log.info(`[${this.wallet.address}] Stop and Claim Points Result:`, response.data);
       return true;
     } else {
-      log.warn("Failed to Stopping Node and claiming points");
+      log.warn(`[${this.wallet.address}] Failed to Stopping Node and claiming points`);
       return false;
     }
   }
@@ -356,13 +357,13 @@ class LayerEdgeConnection {
     const response = await this.makeRequest("get", `${config.baseURL}/light-node/node-status/${this.wallet.address}`);
 
     if (response === 404) {
-      log.info("Node not found in this wallet, trying to regitering wallet...");
+      log.info(`[${this.wallet.address}] Node not found in this wallet, trying to regitering wallet...`);
       await this.registerWallet();
       return false;
     }
 
     if (response && response.data && response.data.data.startTimestamp !== null) {
-      log.info("Node Status Running", response.data);
+      log.info(`[${this.wallet.address}] Node Status Running`, response.data);
       // // Thời gian cho trước (timestamp)
       // const givenTimestamp = response.data.data.startTimestamp * 1000; // Chuyển đổi từ giây sang mili giây
       // // Lấy thời gian hiện tại
@@ -375,7 +376,7 @@ class LayerEdgeConnection {
       // }
       return true;
     } else {
-      log.warn("Node not running trying to start node...");
+      log.warn(`[${this.wallet.address}] Node not running trying to start node...`);
     }
     return false;
   }
@@ -384,19 +385,19 @@ class LayerEdgeConnection {
     const response = await this.makeRequest("get", `${config.baseURL}/referral/wallet-details/${this.wallet.address}`);
     if (response && response.data) {
       const isTwitterVerified = response.data.data.isTwitterVerified;
-      log.info(`${this.wallet.address} Total Points:`, response.data.data?.nodePoints || 0);
+      log.info(`[${this.wallet.address}] Total Points:`, response.data.data?.nodePoints || 0);
       const lasCheckin = response.data.data?.lastClaimed;
       const isNewDate = new Date() - new Date(lasCheckin) > 24 * 60 * 60 * 1000;
       if (isNewDate || !lasCheckin) {
         await this.checkIn();
       }
       if (!isTwitterVerified) {
-        log.info(`Trying connect twitter...`);
+        log.info(`[${this.wallet.address}] Trying connect twitter...`);
         await this.connectTwitter();
       }
       return true;
     } else {
-      log.error("Failed to check Total Points..");
+      log.error(`[${this.wallet.address}] Failed to check Total Points..`);
       return false;
     }
   }
@@ -413,10 +414,26 @@ class LayerEdgeConnection {
     };
     const response = await this.makeRequest("post", `${config.baseURL}/light-node/claim-node-points`, { data: dataSign });
     if (response && response.data) {
-      log.info(`${this.wallet.address} Checkin success:`, response.data);
+      log.info(`$[${this.wallet.address}] Checkin success:`, response.data);
       return true;
     } else {
-      log.error("Failed to check in..");
+      log.error(`[${this.wallet.address}] Failed to check in..`);
+      return false;
+    }
+  }
+
+  async checkProxy() {
+    try {
+      const response = await axios.get("https://api.ipify.org?format=json", { httpsAgent: newAgent(this.proxy) });
+      if (response.status === 200) {
+        this.proxyIP = response.data.ip;
+        return true;
+      } else {
+        log.error(`[${this.wallet.address}] Cannot check proxy IP. Status code: ${response.status}`);
+        return false;
+      }
+    } catch (error) {
+      log.error(`[${this.wallet.address}] Error checking proxy IP: ${error.message}`);
       return false;
     }
   }
