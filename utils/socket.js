@@ -68,8 +68,8 @@ class LayerEdgeConnection {
           }
           return null;
         }
-        const messErr = error.status < 500 ? JSON.stringify(error.response.data || error.message) : error.response;
-        process.stdout.write(chalk.yellow(`Request failed: ${messErr} => Retrying... (${i + 1}/${retries})\r`));
+        const messErr = error.status < 500 ? error.response.data || error.message : error.response;
+        process.stdout.write(chalk.yellow(`Request failed: ${JSON.stringify(messErr)} => Retrying... (${i + 1}/${retries})\r`));
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
