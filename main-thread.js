@@ -1,12 +1,13 @@
 import fs from "fs/promises";
 import log from "./utils/logger.js";
-import { readFile, delay, readJson } from "./utils/helper.js";
+import { readFile, delay, readJson, newAgent } from "./utils/helper.js";
 import banner from "./utils/banner.js";
 import LayerEdge from "./utils/socket.js";
 import { Worker, isMainThread, parentPort, workerData } from "worker_threads";
 import { fileURLToPath } from "url"; // Import necessary functions for file URL conversion
 import { dirname } from "path"; // Import necessary functions for path manipulation
 import { config } from "./config.js";
+import axios from "axios";
 
 const __filename = fileURLToPath(import.meta.url); // Get the current module's filename
 const __dirname = dirname(__filename);
@@ -37,6 +38,21 @@ class Client {
     this.tasks = tasks;
   }
 
+  async checkProxy() {
+    try {
+      const response = await axios.get("https://api.ipify.org?format=json", { httpsAgent: newAgent(this.proxy) });
+      if (response.status === 200) {
+        this.proxyIp = response.data.ip;
+        return response.data.ip;
+      } else {
+        log.error(`[${this.wallet.address}] Cannot check proxy IP. Status code: ${response.status}`);
+        return null;
+      }
+    } catch (error) {
+      log.error(`[${this.wallet.address}] Error checking proxy IP: ${error.message}`);
+      return null;
+    }
+  }
   async runAccount() {
     const i = this.accountIndex + 1;
     const wallet = this.wallet;
@@ -44,34 +60,32 @@ class Client {
     const { address, privateKey } = wallet;
     try {
       const socket = new LayerEdge(proxy, privateKey, config.ref_code, this.localStorage, this.tasks);
-      log.info(`[Account ${i}][${address}] Checking proxy...`);
-      const proxyip = await socket.checkProxy();
+      const proxyip = await this.checkProxy();
       if (!proxyip) return;
 
-      log.info(`[Account ${i}] Checking Node Status for: ${address}`);
+      log.info(`[Account ${i}][${this.proxyIp}] Checking Node Status for: ${address}`);
       const isRunning = await socket.checkNodeStatus();
 
       if (isRunning) {
-        log.info(`[Account ${i}][${address}] is running - trying to claim node points...`);
+        log.info(`[Account ${i}][${address}][${this.proxyIp} is running - trying to claim node points...`);
         await socket.stopNode();
       }
-      log.info(`[Account ${i}][${address}] Trying to reconnect node...`);
+      log.info(`[Account ${i}][${address}][${this.proxyIp} Trying to reconnect node...`);
       await socket.connectNode();
 
-      log.info(`[Account ${i}][${address}] Checking Node Points...`);
+      log.info(`[Account ${i}][${address}][${this.proxyIp} Checking Node Points...`);
       await socket.checkNodePoints();
 
-      await socket.handleSubmitProof();
-
       if (config.auto_task) {
-        log.info(`[Account ${i}][${address}] Checking Tasks...`);
+        await socket.handleSubmitProof();
+        log.info(`[Account ${i}][${address}][${this.proxyIp} Checking Tasks...`);
         const resTask = await socket.handleTasks();
         if (resTask) {
           parentPort.postMessage({ message: "saveTask", value: resTask, address: this.wallet.address });
         }
       }
     } catch (error) {
-      log.error(`[Account ${i}] Error Processing wallet:`, error.message);
+      log.error(`[Account ${i}][${this.proxyIp} Error Processing wallet:`, error.message);
     }
   }
 }

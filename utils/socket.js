@@ -28,7 +28,7 @@ class LayerEdgeConnection {
     return this.wallet;
   }
 
-  async makeRequest(method, url, config = {}, retries = 10) {
+  async makeRequest(method, url, config = {}, retries = 15) {
     for (let i = 0; i < retries; i++) {
       try {
         const response = await axios({
@@ -68,8 +68,8 @@ class LayerEdgeConnection {
           }
           return null;
         }
-        const messErr = error.status < 500 ? error.response.data || error.message : error.response;
-        process.stdout.write(chalk.yellow(`Request failed: ${JSON.stringify(messErr)} => Retrying... (${i + 1}/${retries})\r`));
+        // const messErr = error.status < 500 ? error.response.data || error.message : error.response;
+        process.stdout.write(chalk.yellow(`Request failed: ${error.message} => Retrying... (${i + 1}/${retries})\r`));
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
@@ -391,7 +391,7 @@ class LayerEdgeConnection {
       if (isNewDate || !lasCheckin) {
         await this.checkIn();
       }
-      if (!isTwitterVerified) {
+      if (!isTwitterVerified && config.auto_connect_twitter) {
         log.info(`[${this.wallet.address}] Trying connect twitter...`);
         await this.connectTwitter();
       }

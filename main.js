@@ -85,8 +85,8 @@ async function run() {
 
         log.info(`Checking Node Points for Wallet: ${address}`);
         await socket.checkNodePoints();
-        await socket.handleSubmitProof();
         if (config.auto_task) {
+          await socket.handleSubmitProof();
           log.info(`Checking tasks for Wallet: ${address}`);
           await socket.handleTasks();
         }

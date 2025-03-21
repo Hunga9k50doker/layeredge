@@ -3,7 +3,9 @@ export const config = {
   ref_code: "EEFjkUAU",
   num_ref: 500, // number of references
   max_threads: 50, // số luồng
-  auto_task: true,
+  auto_connect_twitter: false,
+  auto_task: false,
+
   ////// Key thử nghiệm============Không thay đổi
   rpc: "https://1rpc.io/base",
   //valid values: 2captcha, anticaptcha
